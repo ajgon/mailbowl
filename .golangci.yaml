@@ -1,0 +1,17 @@
+---
+linters:
+  enable-all: true
+  disable:
+    - exhaustivestruct
+    - gci
+    - golint
+    - interfacer
+    - maligned
+    - scopelint
+
+issues:
+  exclude-rules:
+    - path: cmd/
+      linters:
+        - gochecknoglobals
+        - gochecknoinits

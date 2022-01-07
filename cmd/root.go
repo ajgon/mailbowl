@@ -22,16 +22,19 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"fmt"
+	"encoding/json"
 	"os"
+	"strings"
 
+	"github.com/Masterminds/log-go"
+	"github.com/ajgon/mailbowl/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var cfgFile string
 
-// rootCmd represents the base command when called without any subcommands
+// rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
 	Use:   "mailbowl",
 	Short: "A brief description of your application",
@@ -49,8 +52,7 @@ to quickly create a Cobra application.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
@@ -71,6 +73,8 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	config.SetDefaults()
+
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
@@ -85,10 +89,19 @@ func initConfig() {
 		viper.SetConfigName(".mailbowl")
 	}
 
+	viper.SetEnvPrefix("MAILBOWL")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv() // read in environment variables that match
+
+	err := config.ConfigureLogger(os.Stdout, os.Stderr)
+	cobra.CheckErr(err)
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+		log.Info("Using config file:", viper.ConfigFileUsed())
 	}
+
+	viperSettingsJSON, err := json.Marshal(viper.AllSettings())
+	cobra.CheckErr(err)
+	log.Debug("Loaded config: ", string(viperSettingsJSON))
 }
