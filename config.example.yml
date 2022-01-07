@@ -1,0 +1,30 @@
+---
+env: development
+
+log:
+  format: ""
+  level: warn
+  stacktrace_level: ""
+
+smtp:
+  hostname: "localhost.localdomain"
+  limit:
+    connections: 100
+    message_size: 26214400
+    recipients: 100
+  listen:
+    - 0.0.0.0:10025
+    - tls://0.0.0.0:10465
+    - starttls://0.0.0.0:10587
+  timeout:
+    read: 60s
+    write: 60s
+    data: 5m
+  tls:
+    key: ""
+    certificate: ""
+    key_file: ""
+    certificate_file: ""
+    force_for_starttls: true
+  whitelist:
+    cidrs: []

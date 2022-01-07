@@ -2,11 +2,15 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 
 	"github.com/Masterminds/log-go"
 	"github.com/ajgon/mailbowl/config"
+	"github.com/ajgon/mailbowl/listener"
+	"github.com/ajgon/mailbowl/listener/smtp"
+	"github.com/ajgon/mailbowl/process"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -26,6 +30,42 @@ to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
+		tlsConfig, err := smtp.NewTLS(
+			viper.GetString("smtp.tls.key"),
+			viper.GetString("smtp.tls.certificate"),
+			viper.GetString("smtp.tls.key_file"),
+			viper.GetString("smtp.tls.certificate_file"),
+			viper.GetBool("smtp.tls.force_for_starttls"),
+		)
+		if err != nil && !errors.Is(err, smtp.ErrTLSNotConfigured) {
+			log.Fatalf("invalid TLS config: %s", err.Error())
+		}
+
+		httpServer := listener.NewHTTP()
+		smtpServer := smtp.NewSMTP(
+			viper.GetString("smtp.hostname"),
+			smtp.NewLimit(
+				viper.GetInt("smtp.limit.connections"),
+				viper.GetInt("smtp.limit.message_size"),
+				viper.GetInt("smtp.limit.recipients"),
+			),
+			viper.GetStringSlice("smtp.listen"),
+			smtp.NewTimeout(
+				viper.GetString("smtp.timeout.read"),
+				viper.GetString("smtp.timeout.write"),
+				viper.GetString("smtp.timeout.data"),
+			),
+			tlsConfig,
+			smtp.NewWhitelist(
+				viper.GetStringSlice("smtp.whitelist.cidrs"),
+			),
+		)
+
+		manager := process.NewManager()
+		manager.AddListener(httpServer)
+		manager.AddListener(smtpServer)
+
+		manager.Start()
 	},
 }
 
