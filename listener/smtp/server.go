@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	ServiceNotAvailable = 421
+	ServiceNotAvailable              = 421
+	AuthenticationCredentialsInvalid = 535
 )
 
 var errMissingTLSConfig = errors.New("server configured, but TLS config is missing")
@@ -21,6 +22,7 @@ func ErrMissingTLSConfig(tlsType string) error {
 }
 
 type Server struct {
+	Auth      *Auth
 	Hostname  string
 	Limit     *Limit
 	Timeout   *Timeout
@@ -33,15 +35,17 @@ type Server struct {
 }
 
 func NewServer(
-	hostname string, limit *Limit, uri *URI, timeout *Timeout, tls *TLS, whitelist *Whitelist,
+	auth *Auth, hostname string, limit *Limit, uri *URI, timeout *Timeout, tls *TLS, whitelist *Whitelist,
 ) *Server {
 	server := &Server{
+		Auth:      auth,
 		Hostname:  hostname,
 		Limit:     limit,
 		Timeout:   timeout,
 		TLS:       tls,
 		Whitelist: whitelist,
-		URI:       uri,
+
+		URI: uri,
 	}
 
 	return server
@@ -75,7 +79,11 @@ func (s *Server) Build() (err error) {
 		MaxMessageSize: s.Limit.MessageSize,
 		MaxRecipients:  s.Limit.Recipients,
 
-		ConnectionChecker: s.buildConnectionChecker(),
+		ConnectionChecker: s.connectionChecker,
+	}
+
+	if s.Auth.Enabled {
+		s.SMTPD.Authenticator = s.authenticator
 	}
 
 	switch s.URI.Scheme {
@@ -107,27 +115,42 @@ func (s *Server) Build() (err error) {
 	return nil
 }
 
-func (s *Server) buildConnectionChecker() func(peer smtpd.Peer) error {
-	return func(peer smtpd.Peer) error {
-		remoteIP := peer.Addr.(*net.TCPAddr).IP
+func (s *Server) connectionChecker(peer smtpd.Peer) error {
+	remoteIP := peer.Addr.(*net.TCPAddr).IP
 
-		log.Debugw("new SMTP connection", log.Fields{"server": s.URI.String(), "remote_ip": remoteIP})
+	log.Debugw("new SMTP connection", log.Fields{"server": s.URI.String(), "remote_ip": remoteIP})
 
-		testIP, _, err := net.ParseCIDR(fmt.Sprintf("%s/32", remoteIP))
-		if err != nil {
-			return fmt.Errorf("error processing remote IP: %w", err)
-		}
-
-		for _, cidr := range s.Whitelist.CIDRs {
-			_, ipnet, err := net.ParseCIDR(cidr)
-
-			if err == nil && ipnet.Contains(testIP) {
-				return nil
-			}
-		}
-
-		log.Debugw("IP not included in whitelist, access denied", log.Fields{"server": s.URI.String(), "remote_ip": remoteIP})
-
-		return smtpd.Error{Code: ServiceNotAvailable, Message: "Denied"}
+	testIP, _, err := net.ParseCIDR(fmt.Sprintf("%s/32", remoteIP))
+	if err != nil {
+		return fmt.Errorf("error processing remote IP: %w", err)
 	}
+
+	for _, cidr := range s.Whitelist.CIDRs {
+		_, ipnet, err := net.ParseCIDR(cidr)
+
+		if err == nil && ipnet.Contains(testIP) {
+			return nil
+		}
+	}
+
+	log.Infow("IP not included in whitelist, access denied", log.Fields{"server": s.URI.String(), "remote_ip": remoteIP})
+
+	return smtpd.Error{Code: ServiceNotAvailable, Message: "Denied"}
+}
+
+func (s *Server) authenticator(peer smtpd.Peer, username string, password string) error {
+	remoteIP := peer.Addr.(*net.TCPAddr).IP
+
+	for _, user := range s.Auth.Users {
+		if user.Authenticate(username, password) {
+			return nil
+		}
+	}
+
+	log.Infow(
+		"authorization failed, access denied",
+		log.Fields{"server": s.URI.String(), "remote_ip": remoteIP, "username": username},
+	)
+
+	return smtpd.Error{Code: AuthenticationCredentialsInvalid, Message: "Authentication credentials invalid"}
 }

@@ -41,8 +41,17 @@ to quickly create a Cobra application.`,
 			log.Fatalf("invalid TLS config: %s", err.Error())
 		}
 
+		smtpAuthUsers := make([]*smtp.AuthUser, 0)
+
+		if users, ok := viper.Get("smtp.auth.users").([]map[string]string); ok {
+			for _, user := range users {
+				smtpAuthUsers = append(smtpAuthUsers, smtp.NewAuthUser(user["email"], user["password_hash"]))
+			}
+		}
+
 		httpServer := listener.NewHTTP()
 		smtpServer := smtp.NewSMTP(
+			smtp.NewAuth(viper.GetBool("smtp.auth.enabled"), smtpAuthUsers),
 			viper.GetString("smtp.hostname"),
 			smtp.NewLimit(
 				viper.GetInt("smtp.limit.connections"),

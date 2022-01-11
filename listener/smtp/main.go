@@ -12,7 +12,7 @@ type SMTP struct {
 }
 
 func NewSMTP(
-	hostname string, limit *Limit, uris []string, timeout *Timeout, tls *TLS, whitelist *Whitelist,
+	auth *Auth, hostname string, limit *Limit, uris []string, timeout *Timeout, tls *TLS, whitelist *Whitelist,
 ) *SMTP {
 	smtp := &SMTP{Servers: make([]*Server, 0)}
 	brokenURIs := false
@@ -24,7 +24,7 @@ func NewSMTP(
 
 			log.Errorw("invalid SMTP listener URI: %s", log.Fields{"uri": uri})
 		} else {
-			server := NewServer(hostname, limit, smtpURI, timeout, tls, whitelist)
+			server := NewServer(auth, hostname, limit, smtpURI, timeout, tls, whitelist)
 			smtp.Servers = append(smtp.Servers, server)
 		}
 	}

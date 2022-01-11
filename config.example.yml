@@ -26,5 +26,6 @@ smtp:
     key_file: ""
     certificate_file: ""
     force_for_starttls: true
+  users: [] # [email, password_hash]
   whitelist:
     cidrs: []
