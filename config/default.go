@@ -13,6 +13,13 @@ type Defaults struct {
 	LogLevel           string `viper:"log.level"`
 	LogStacktraceLevel string `viper:"log.stacktrace_level"`
 
+	RelayOutgoingServerAddress    string `viper:"relay.outgoing_server.address"`
+	RelayOutgoingServerAuthMethod string `viper:"relay.outgoing_server.auth_method"`
+	RelayOutgoingServerFromEmail  string `viper:"relay.outgoing_server.from_email"`
+	RelayOutgoingServerPassword   string `viper:"relay.outgoing_server.password"`
+	RelayOutgoingServerUsername   string `viper:"relay.outgoing_server.username"`
+	RelayOutgoingServerVerifyTLS  bool   `viper:"relay.outgoing_server.verify_tls"`
+
 	SMTPAuthEnabled         bool                `viper:"smtp.auth.enabled"`
 	SMTPAuthUsers           []map[string]string `viper:"smtp.auth.users"`
 	SMTPHostname            string              `viper:"smtp.hostname"`
@@ -39,17 +46,20 @@ func GetDefaults() *Defaults {
 		LogLevel:           "warn",
 		LogStacktraceLevel: "",
 
-		SMTPHostname: "localhost.localdomain",
+		RelayOutgoingServerAddress:    "",
+		RelayOutgoingServerAuthMethod: "plain",
+		RelayOutgoingServerFromEmail:  "",
+		RelayOutgoingServerPassword:   "",
+		RelayOutgoingServerUsername:   "",
+		RelayOutgoingServerVerifyTLS:  true,
 
-		SMTPAuthEnabled: true,
-		SMTPAuthUsers: []map[string]string{
-			{"email": "test@example.com", "password_hash": "$2a$10$BoHLl7lps2ZhB.B5h3Zqau.p4VAQR7BVjmWTC7nEbDAY9Kp4LjNrW"},
-		}, // pass: test
-		SMTPLimitConnections: 100,      //nolint:gomnd
-		SMTPLimitMessageSize: 26214400, //nolint:gomnd
-		SMTPLimitRecipients:  100,      //nolint:gomnd
-		SMTPListen:           []string{"plain://0.0.0.0:10025", "tls://0.0.0.0:10465", "starttls://0.0.0.0:10587"},
-		// SMTPListen:              []string{"plain://0.0.0.0:10025"},
+		SMTPAuthEnabled:         true,
+		SMTPAuthUsers:           []map[string]string{},
+		SMTPHostname:            "localhost.localdomain",
+		SMTPLimitConnections:    100,      //nolint:gomnd
+		SMTPLimitMessageSize:    26214400, //nolint:gomnd
+		SMTPLimitRecipients:     100,      //nolint:gomnd
+		SMTPListen:              []string{"tls://0.0.0.0:10465", "starttls://0.0.0.0:10587"},
 		SMTPTimeoutRead:         "60s",
 		SMTPTimeoutWrite:        "60s",
 		SMTPTimeoutData:         "5m",

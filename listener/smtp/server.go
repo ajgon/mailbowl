@@ -7,12 +7,14 @@ import (
 	"net"
 
 	"github.com/Masterminds/log-go"
+	"github.com/ajgon/mailbowl/relay"
 	"github.com/chrj/smtpd"
 )
 
 const (
 	ServiceNotAvailable              = 421
 	AuthenticationCredentialsInvalid = 535
+	TransactionFailed                = 554
 )
 
 var errMissingTLSConfig = errors.New("server configured, but TLS config is missing")
@@ -30,12 +32,14 @@ type Server struct {
 	Whitelist *Whitelist
 
 	URI      *URI
+	Relay    *relay.Relay
 	SMTPD    *smtpd.Server
 	Listener net.Listener
 }
 
 func NewServer(
-	auth *Auth, hostname string, limit *Limit, uri *URI, timeout *Timeout, tls *TLS, whitelist *Whitelist,
+	auth *Auth, hostname string, limit *Limit, timeout *Timeout, tls *TLS, whitelist *Whitelist, uri *URI,
+	relay *relay.Relay,
 ) *Server {
 	server := &Server{
 		Auth:      auth,
@@ -45,7 +49,8 @@ func NewServer(
 		TLS:       tls,
 		Whitelist: whitelist,
 
-		URI: uri,
+		URI:   uri,
+		Relay: relay,
 	}
 
 	return server
@@ -80,6 +85,7 @@ func (s *Server) Build() (err error) {
 		MaxRecipients:  s.Limit.Recipients,
 
 		ConnectionChecker: s.connectionChecker,
+		Handler:           s.handler,
 	}
 
 	if s.Auth.Enabled {
@@ -153,4 +159,34 @@ func (s *Server) authenticator(peer smtpd.Peer, username string, password string
 	)
 
 	return smtpd.Error{Code: AuthenticationCredentialsInvalid, Message: "Authentication credentials invalid"}
+}
+
+func (s *Server) handler(peer smtpd.Peer, envelope smtpd.Envelope) error {
+	if s.Relay == nil {
+		return nil
+	}
+
+	remoteIP := peer.Addr.(*net.TCPAddr).IP
+
+	log.Infow("processing email", log.Fields{
+		"server": s.URI.String(), "from": envelope.Sender, "to": envelope.Recipients, "remote_ip": remoteIP,
+	})
+
+	envelope.AddReceivedLine(peer)
+
+	err := s.Relay.Handle(envelope.Sender, envelope.Recipients, envelope.Data)
+	if err != nil {
+		log.Errorf("forwarding failed", log.Fields{
+			"server": s.URI.String(), "from": envelope.Sender, "to": envelope.Recipients, "remote_ip": remoteIP,
+			"error": err.Error(),
+		})
+
+		return smtpd.Error{Code: TransactionFailed, Message: "forwarding failed"}
+	}
+
+	log.Infow("forwarding succeeded, mail sent", log.Fields{
+		"server": s.URI.String(), "from": envelope.Sender, "to": envelope.Recipients, "remote_ip": remoteIP,
+	})
+
+	return nil
 }

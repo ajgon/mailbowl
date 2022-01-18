@@ -1,6 +1,8 @@
 package smtp
 
-import "golang.org/x/crypto/bcrypt"
+import (
+	"golang.org/x/crypto/bcrypt"
+)
 
 type Auth struct {
 	Enabled bool

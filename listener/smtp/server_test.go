@@ -2,6 +2,8 @@ package smtp_test
 
 import (
 	"crypto/tls"
+	"fmt"
+	"math/rand"
 	netsmtp "net/smtp"
 	"testing"
 	"time"
@@ -10,10 +12,33 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func newTestServer(t *testing.T, url, cidr string, includeTLSCertificate, authEnabled bool) *smtp.Server {
+type RandomPorts struct {
+	Ports map[int]bool
+}
+
+var randomPorts = &RandomPorts{Ports: map[int]bool{0: true}} //nolint:gochecknoglobals
+
+func randomPort() int {
+	var port int
+
+	rand.Seed(time.Now().UnixNano())
+
+	for randomPorts.Ports[port] {
+		port = rand.Intn(64512) + 1024 //nolint:gosec
+	}
+
+	randomPorts.Ports[port] = true
+
+	return port
+}
+
+func newTestServer(t *testing.T, proto, cidr string, includeTLSCertificate, authEnabled bool) (*smtp.Server, string) {
 	t.Helper()
 
 	var tls *smtp.TLS
+
+	host := fmt.Sprintf("127.0.0.1:%d", randomPort())
+	url := fmt.Sprintf("%s://%s", proto, host)
 
 	tlsKeyExample := `
 -----BEGIN PRIVATE KEY-----
@@ -53,13 +78,13 @@ DQ2hhzbuPuECiTPOUYSO5wI=
 
 	whitelist := smtp.NewWhitelist([]string{cidr})
 
-	return smtp.NewServer(auth, "hostname", limit, uri, timeout, tls, whitelist)
+	return smtp.NewServer(auth, "hostname", limit, timeout, tls, whitelist, uri, nil), host
 }
 
 func TestBuildServer(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "plain://127.0.0.1:10025", "0.0.0.0/0", false, false)
+	server, _ := newTestServer(t, "plain", "0.0.0.0/0", false, false)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -84,7 +109,7 @@ func TestBuildServer(t *testing.T) {
 func TestBuildPlainServer(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "plain://127.0.0.1:11025", "0.0.0.0/0", false, false)
+	server, host := newTestServer(t, "plain", "0.0.0.0/0", false, false)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -93,13 +118,13 @@ func TestBuildPlainServer(t *testing.T) {
 	assert.Nil(t, server.TLS)
 	assert.False(t, server.SMTPD.ForceTLS)
 	assert.Nil(t, server.SMTPD.TLSConfig)
-	assert.Equal(t, server.Listener.Addr().String(), "127.0.0.1:11025")
+	assert.Equal(t, server.Listener.Addr().String(), host)
 }
 
 func TestBuildTlsServer(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "tls://127.0.0.1:10465", "0.0.0.0/0", true, false)
+	server, host := newTestServer(t, "tls", "0.0.0.0/0", true, false)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -108,13 +133,13 @@ func TestBuildTlsServer(t *testing.T) {
 	assert.True(t, server.TLS.ForceForStartTLS)
 	assert.False(t, server.SMTPD.ForceTLS)
 	assert.NotNil(t, server.SMTPD.TLSConfig)
-	assert.Equal(t, server.Listener.Addr().String(), "127.0.0.1:10465")
+	assert.Equal(t, server.Listener.Addr().String(), host)
 }
 
 func TestBuildTlsServerWithoutCertificates(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "tls://127.0.0.1:11465", "0.0.0.0/0", false, false)
+	server, _ := newTestServer(t, "tls", "0.0.0.0/0", false, false)
 	err := server.Build()
 	assert.Error(t, err)
 
@@ -127,7 +152,7 @@ func TestBuildTlsServerWithoutCertificates(t *testing.T) {
 func TestBuildStartTlsServer(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "starttls://127.0.0.1:10587", "0.0.0.0/0", true, false)
+	server, host := newTestServer(t, "starttls", "0.0.0.0/0", true, false)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -136,13 +161,13 @@ func TestBuildStartTlsServer(t *testing.T) {
 	assert.True(t, server.TLS.ForceForStartTLS)
 	assert.True(t, server.SMTPD.ForceTLS)
 	assert.NotNil(t, server.SMTPD.TLSConfig)
-	assert.Equal(t, server.Listener.Addr().String(), "127.0.0.1:10587")
+	assert.Equal(t, server.Listener.Addr().String(), host)
 }
 
 func TestBuildStartTlsServerWithoutCertificates(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "starttls://127.0.0.1:11587", "0.0.0.0/0", false, false)
+	server, _ := newTestServer(t, "starttls", "0.0.0.0/0", false, false)
 	err := server.Build()
 	assert.Error(t, err)
 
@@ -155,7 +180,7 @@ func TestBuildStartTlsServerWithoutCertificates(t *testing.T) {
 func TestIPWhitelistDenied(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "plain://127.0.0.1:12025", "10.0.0.0/8", false, false)
+	server, host := newTestServer(t, "plain", "10.0.0.0/8", false, false)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -163,7 +188,7 @@ func TestIPWhitelistDenied(t *testing.T) {
 	defer server.Shutdown() //nolint: errcheck
 
 	err = netsmtp.SendMail(
-		"127.0.0.1:12025", nil, "sender@example.local", []string{"receiver@example.local"}, []byte("Subject: Test"),
+		host, nil, "sender@example.local", []string{"receiver@example.local"}, []byte("Subject: Test"),
 	)
 
 	assert.Equal(t, err.Error(), "421 Denied")
@@ -172,7 +197,7 @@ func TestIPWhitelistDenied(t *testing.T) {
 func TestIPWhitelisAllowed(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "plain://127.0.0.1:13025", "127.0.0.1/32", false, false)
+	server, host := newTestServer(t, "plain", "127.0.0.1/32", false, false)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -180,16 +205,22 @@ func TestIPWhitelisAllowed(t *testing.T) {
 	defer server.Shutdown() //nolint: errcheck
 
 	err = netsmtp.SendMail(
-		"127.0.0.1:13025", nil, "sender@example.local", []string{"receiver@example.local"}, []byte("Subject: Test"),
+		host, nil, "sender@example.local", []string{"receiver@example.local"}, []byte("Subject: Test"),
 	)
 
 	assert.NoError(t, err)
 }
 
+func TestNoAuthenticationForPlainServer(t *testing.T) {
+	t.Parallel()
+
+	t.Skip("TODO")
+}
+
 func TestAuthenticationDeniedForMissingUser(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "tls://127.0.0.1:11465", "127.0.0.1/32", true, true)
+	server, host := newTestServer(t, "tls", "127.0.0.1/32", true, true)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -201,7 +232,7 @@ func TestAuthenticationDeniedForMissingUser(t *testing.T) {
 		ServerName:         "localhost",
 	}
 
-	tlsConnection, err := tls.Dial("tcp", "127.0.0.1:11465", tlsconfig)
+	tlsConnection, err := tls.Dial("tcp", host, tlsconfig)
 	assert.NoError(t, err)
 
 	defer tlsConnection.Close()
@@ -218,7 +249,7 @@ func TestAuthenticationDeniedForMissingUser(t *testing.T) {
 func TestAuthenticationDeniedForWrongCredentials(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "tls://127.0.0.1:12465", "127.0.0.1/32", true, true)
+	server, host := newTestServer(t, "tls", "127.0.0.1/32", true, true)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -230,7 +261,7 @@ func TestAuthenticationDeniedForWrongCredentials(t *testing.T) {
 		ServerName:         "localhost",
 	}
 
-	tlsConnection, err := tls.Dial("tcp", "127.0.0.1:12465", tlsconfig)
+	tlsConnection, err := tls.Dial("tcp", host, tlsconfig)
 	assert.NoError(t, err)
 
 	defer tlsConnection.Close()
@@ -248,7 +279,7 @@ func TestAuthenticationDeniedForWrongCredentials(t *testing.T) {
 func TestAuthenticationValid(t *testing.T) {
 	t.Parallel()
 
-	server := newTestServer(t, "tls://127.0.0.1:13465", "127.0.0.1/32", true, true)
+	server, host := newTestServer(t, "tls", "127.0.0.1/32", true, true)
 	err := server.Build()
 	assert.NoError(t, err)
 
@@ -260,7 +291,7 @@ func TestAuthenticationValid(t *testing.T) {
 		ServerName:         "localhost",
 	}
 
-	tlsConnection, err := tls.Dial("tcp", "127.0.0.1:13465", tlsconfig)
+	tlsConnection, err := tls.Dial("tcp", host, tlsconfig)
 	assert.NoError(t, err)
 
 	defer tlsConnection.Close()

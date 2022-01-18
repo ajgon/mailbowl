@@ -6,14 +6,26 @@ log:
   level: warn
   stacktrace_level: ""
 
+relay:
+  outgoing_server:
+    address: ""
+    auth_method: plain
+    from_email: ""
+    password: ""
+    username: ""
+    verify_tls: true
+
 smtp:
+  auth:
+    enabled: true
+    users: []
   hostname: "localhost.localdomain"
   limit:
     connections: 100
     message_size: 26214400
     recipients: 100
   listen:
-    - 0.0.0.0:10025
+    - plain://0.0.0.0:10025
     - tls://0.0.0.0:10465
     - starttls://0.0.0.0:10587
   timeout:
