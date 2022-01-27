@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+
+	"github.com/ajgon/mailbowl/config"
 )
 
 var ErrTLSNotConfigured = errors.New("TLS not configured")
@@ -13,13 +15,13 @@ type TLS struct {
 	ForceForStartTLS bool
 }
 
-func NewTLS(key, certificate, keyFile, certificateFile string, forceForStartTLS bool) (*TLS, error) {
+func NewTLS(conf config.SMTPTLS) (*TLS, error) {
 	var (
 		cert tls.Certificate
 		err  error
 	)
 
-	if key == "" && certificate == "" && keyFile == "" && certificateFile == "" {
+	if conf.Key == "" && conf.Certificate == "" && conf.KeyFile == "" && conf.CertificateFile == "" {
 		return nil, ErrTLSNotConfigured
 	}
 
@@ -38,10 +40,10 @@ func NewTLS(key, certificate, keyFile, certificateFile string, forceForStartTLS 
 	}
 
 	// first try load direct TLS (it takes precedence)
-	cert, err = tls.X509KeyPair([]byte(certificate), []byte(key))
+	cert, err = tls.X509KeyPair([]byte(conf.Certificate), []byte(conf.Key))
 	if err != nil {
 		// okay, let's try file then
-		cert, err = tls.LoadX509KeyPair(certificateFile, keyFile)
+		cert, err = tls.LoadX509KeyPair(conf.CertificateFile, conf.KeyFile)
 		if err != nil {
 			// still no luck? then fail
 			return nil, fmt.Errorf("invalid TLS configuration: %w", err)
@@ -55,6 +57,6 @@ func NewTLS(key, certificate, keyFile, certificateFile string, forceForStartTLS 
 			CipherSuites:             tlsCipherSuites,
 			Certificates:             []tls.Certificate{cert},
 		},
-		ForceForStartTLS: forceForStartTLS,
+		ForceForStartTLS: conf.ForceForStartTLS,
 	}, nil
 }

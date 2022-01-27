@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ajgon/mailbowl/config"
 	"github.com/ajgon/mailbowl/listener/smtp"
 	"github.com/ajgon/mailbowl/relay"
 	"github.com/chrj/smtpd"
@@ -27,7 +28,7 @@ func randomPort() int {
 	rand.Seed(time.Now().UnixNano())
 
 	for randomPorts.Ports[port] {
-		port = rand.Intn(64512) + 1024 //nolint:gosec
+		port = rand.Intn(64512) + 1024
 	}
 
 	randomPorts.Ports[port] = true
@@ -44,12 +45,13 @@ type SMTPTestServer struct {
 }
 
 func NewSMTPTestServer() *SMTPTestServer {
-	smtpTLS, _ := smtp.NewTLS(
-		`
+	smtpConfigTLS := config.SMTPTLS{
+		Key: `
 -----BEGIN PRIVATE KEY-----
 MC4CAQAwBQYDK2VwBCIEIMsO5gzH0FPxq8AkEgyBoJEBvAxOcCnKENdzYTWbwe6Q
 -----END PRIVATE KEY-----
-		`, `
+		`,
+		Certificate: `
 -----BEGIN CERTIFICATE-----
 MIH+MIGxoAMCAQICFHAn6jIQ9qZxySDKoL/oQXgyjL7YMAUGAytlcDAUMRIwEAYD
 VQQDDAlsb2NhbGhvc3QwIBcNMjIwMTEyMjEwOTQ4WhgPMjEyMTEyMTkyMTA5NDha
@@ -59,8 +61,9 @@ AGo3n53h0jGSFiTMGwBYnrV/69aPjxdB/LGr4p0/v355GVqZXyZ7idCpSuCCiYmk
 DQ2hhzbuPuECiTPOUYSO5wI=
 -----END CERTIFICATE-----
 		`,
-		"", "", false,
-	)
+		ForceForStartTLS: false,
+	}
+	smtpTLS, _ := smtp.NewTLS(smtpConfigTLS)
 
 	return &SMTPTestServer{
 		Port: randomPort(),
@@ -114,9 +117,18 @@ func TestSendPlainWithDefaultFrom(t *testing.T) {
 	testSMTPServer := NewSMTPTestServer()
 	go testSMTPServer.Serve(ctx, "plain")
 
-	outgoingServer, err := relay.NewOutgoingServer(
-		fmt.Sprintf("127.0.0.1:%d", testSMTPServer.Port), "", "plain", "override@example.local", "password", "user", false,
-	)
+	confOutgoingServer := config.RelayOutgoingServer{
+		AuthMethod:     config.AuthNone,
+		ConnectionType: config.ConnectionPlain,
+		FromEmail:      "override@example.local",
+		Host:           "127.0.0.1",
+		Password:       "password",
+		Port:           testSMTPServer.Port,
+		Username:       "user",
+		VerifyTLS:      false,
+	}
+
+	outgoingServer, err := relay.NewOutgoingServer(confOutgoingServer)
 	assert.NoError(t, err)
 	time.Sleep(100 * time.Millisecond) // allow server to start
 
@@ -138,9 +150,19 @@ func TestSendStartTLSWithCustomFrom(t *testing.T) {
 	testSMTPServer := NewSMTPTestServer()
 	go testSMTPServer.Serve(ctx, "starttls")
 
-	outgoingServer, err := relay.NewOutgoingServer(
-		fmt.Sprintf("127.0.0.1:%d", testSMTPServer.Port), "", "starttls", "", "password", "user", false,
-	)
+	confOutgoingServer := config.RelayOutgoingServer{
+		AuthMethod:     config.AuthNone,
+		ConnectionType: config.ConnectionStartTLS,
+		FromEmail:      "",
+		Host:           "127.0.0.1",
+		Password:       "password",
+		Port:           testSMTPServer.Port,
+		Username:       "user",
+		VerifyTLS:      false,
+	}
+
+	outgoingServer, err := relay.NewOutgoingServer(confOutgoingServer)
+
 	assert.NoError(t, err)
 	time.Sleep(100 * time.Millisecond) // allow server to start
 
@@ -162,9 +184,19 @@ func TestSendTLSWithCustomFrom(t *testing.T) {
 	testSMTPServer := NewSMTPTestServer()
 	go testSMTPServer.Serve(ctx, "tls")
 
-	outgoingServer, err := relay.NewOutgoingServer(
-		fmt.Sprintf("127.0.0.1:%d", testSMTPServer.Port), "", "tls", "", "password", "user", false,
-	)
+	confOutgoingServer := config.RelayOutgoingServer{
+		AuthMethod:     config.AuthNone,
+		ConnectionType: config.ConnectionTLS,
+		FromEmail:      "",
+		Host:           "127.0.0.1",
+		Password:       "password",
+		Port:           testSMTPServer.Port,
+		Username:       "user",
+		VerifyTLS:      false,
+	}
+
+	outgoingServer, err := relay.NewOutgoingServer(confOutgoingServer)
+
 	assert.NoError(t, err)
 	time.Sleep(100 * time.Millisecond) // allow server to start
 

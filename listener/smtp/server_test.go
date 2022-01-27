@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ajgon/mailbowl/config"
 	"github.com/ajgon/mailbowl/listener/smtp"
 	"github.com/stretchr/testify/assert"
 )
@@ -24,7 +25,7 @@ func randomPort() int {
 	rand.Seed(time.Now().UnixNano())
 
 	for randomPorts.Ports[port] {
-		port = rand.Intn(64512) + 1024 //nolint:gosec
+		port = rand.Intn(64512) + 1024
 	}
 
 	randomPorts.Ports[port] = true
@@ -35,7 +36,7 @@ func randomPort() int {
 func newTestServer(t *testing.T, proto, cidr string, includeTLSCertificate, authEnabled bool) (*smtp.Server, string) {
 	t.Helper()
 
-	var tls *smtp.TLS
+	var tls config.SMTPTLS
 
 	host := fmt.Sprintf("127.0.0.1:%d", randomPort())
 	url := fmt.Sprintf("%s://%s", proto, host)
@@ -56,29 +57,37 @@ DQ2hhzbuPuECiTPOUYSO5wI=
 -----END CERTIFICATE-----
 	`
 
-	auth := smtp.NewAuth(
-		authEnabled,
-		[]*smtp.AuthUser{
-			smtp.NewAuthUser("test@example.local", "$2a$10$BoHLl7lps2ZhB.B5h3Zqau.p4VAQR7BVjmWTC7nEbDAY9Kp4LjNrW"),
+	auth := config.SMTPAuth{
+		Enabled: authEnabled,
+		Users: []config.SMTPAuthUser{
+			{Email: "test@example.local", PasswordHash: "$2a$10$BoHLl7lps2ZhB.B5h3Zqau.p4VAQR7BVjmWTC7nEbDAY9Kp4LjNrW"},
 		},
-	)
-	limit := smtp.NewLimit(100, 200, 300)
+	}
+	limit := config.SMTPLimit{Connections: 100, MessageSize: 200, Recipients: 300}
 	uri, err := smtp.NewURI(url)
 	assert.NoError(t, err)
 
-	timeout := smtp.NewTimeout("10s", "20s", "30s")
+	timeout := config.SMTPTimeout{Read: 10 * time.Second, Write: 20 * time.Second, Data: 30 * time.Second}
 
 	if includeTLSCertificate {
-		tls, err = smtp.NewTLS(tlsKeyExample, tlsCertificateExample, "", "", true)
-		assert.NoError(t, err)
+		tls = config.SMTPTLS{Key: tlsKeyExample, Certificate: tlsCertificateExample, ForceForStartTLS: true}
 	} else {
-		tls, err = smtp.NewTLS("", "", "", "", true)
-		assert.ErrorIs(t, err, smtp.ErrTLSNotConfigured)
+		tls = config.SMTPTLS{ForceForStartTLS: true}
 	}
 
-	whitelist := smtp.NewWhitelist([]string{cidr})
+	smtpConf := config.SMTP{
+		Auth:      auth,
+		Hostname:  "hostname",
+		Limit:     limit,
+		Timeout:   timeout,
+		TLS:       tls,
+		Whitelist: []string{cidr},
+	}
 
-	return smtp.NewServer(auth, "hostname", limit, timeout, tls, whitelist, uri, nil), host
+	server, err := smtp.NewServer(smtpConf, config.Relay{}, uri)
+	assert.NoError(t, err)
+
+	return server, host
 }
 
 func TestBuildServer(t *testing.T) {
@@ -228,7 +237,7 @@ func TestAuthenticationDeniedForMissingUser(t *testing.T) {
 	defer server.Shutdown() //nolint: errcheck
 
 	tlsconfig := &tls.Config{
-		InsecureSkipVerify: true, //nolint: gosec
+		InsecureSkipVerify: true,
 		ServerName:         "localhost",
 	}
 
@@ -257,7 +266,7 @@ func TestAuthenticationDeniedForWrongCredentials(t *testing.T) {
 	defer server.Shutdown() //nolint: errcheck
 
 	tlsconfig := &tls.Config{
-		InsecureSkipVerify: true, //nolint: gosec
+		InsecureSkipVerify: true,
 		ServerName:         "localhost",
 	}
 
@@ -287,7 +296,7 @@ func TestAuthenticationValid(t *testing.T) {
 	defer server.Shutdown() //nolint: errcheck
 
 	tlsconfig := &tls.Config{
-		InsecureSkipVerify: true, //nolint: gosec
+		InsecureSkipVerify: true,
 		ServerName:         "localhost",
 	}
 

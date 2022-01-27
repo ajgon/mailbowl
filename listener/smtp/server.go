@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/Masterminds/log-go"
+	"github.com/ajgon/mailbowl/config"
 	"github.com/ajgon/mailbowl/relay"
 	"github.com/chrj/smtpd"
 )
@@ -29,7 +30,7 @@ type Server struct {
 	Limit     *Limit
 	Timeout   *Timeout
 	TLS       *TLS
-	Whitelist *Whitelist
+	Whitelist []string
 
 	URI      *URI
 	Relay    *relay.Relay
@@ -37,23 +38,34 @@ type Server struct {
 	Listener net.Listener
 }
 
-func NewServer(
-	auth *Auth, hostname string, limit *Limit, timeout *Timeout, tls *TLS, whitelist *Whitelist, uri *URI,
-	relay *relay.Relay,
-) *Server {
+func NewServer(smtpConf config.SMTP, relayConf config.Relay, uri *URI) (*Server, error) {
+	auth := NewAuth(smtpConf.Auth)
+	limit := NewLimit(smtpConf.Limit)
+	timeout := NewTimeout(smtpConf.Timeout)
+
+	tls, err := NewTLS(smtpConf.TLS)
+	if err != nil {
+		log.Warnw("TLS not configured", log.Fields{"server": uri.String()})
+	}
+
+	relay, err := relay.NewRelay(relayConf)
+	if err != nil {
+		return nil, fmt.Errorf("error configuring relay: %w", err)
+	}
+
 	server := &Server{
 		Auth:      auth,
-		Hostname:  hostname,
+		Hostname:  smtpConf.Hostname,
 		Limit:     limit,
 		Timeout:   timeout,
 		TLS:       tls,
-		Whitelist: whitelist,
+		Whitelist: smtpConf.Whitelist,
 
 		URI:   uri,
 		Relay: relay,
 	}
 
-	return server
+	return server, nil
 }
 
 func (s *Server) Start() {
@@ -122,7 +134,11 @@ func (s *Server) Build() (err error) {
 }
 
 func (s *Server) connectionChecker(peer smtpd.Peer) error {
-	remoteIP := peer.Addr.(*net.TCPAddr).IP
+	var remoteIP net.IP
+
+	if addr, ok := peer.Addr.(*net.TCPAddr); ok {
+		remoteIP = addr.IP
+	}
 
 	log.Debugw("new SMTP connection", log.Fields{"server": s.URI.String(), "remote_ip": remoteIP})
 
@@ -131,7 +147,7 @@ func (s *Server) connectionChecker(peer smtpd.Peer) error {
 		return fmt.Errorf("error processing remote IP: %w", err)
 	}
 
-	for _, cidr := range s.Whitelist.CIDRs {
+	for _, cidr := range s.Whitelist {
 		_, ipnet, err := net.ParseCIDR(cidr)
 
 		if err == nil && ipnet.Contains(testIP) {
@@ -145,7 +161,11 @@ func (s *Server) connectionChecker(peer smtpd.Peer) error {
 }
 
 func (s *Server) authenticator(peer smtpd.Peer, username string, password string) error {
-	remoteIP := peer.Addr.(*net.TCPAddr).IP
+	var remoteIP net.IP
+
+	if addr, ok := peer.Addr.(*net.TCPAddr); ok {
+		remoteIP = addr.IP
+	}
 
 	for _, user := range s.Auth.Users {
 		if user.Authenticate(username, password) {
@@ -162,11 +182,15 @@ func (s *Server) authenticator(peer smtpd.Peer, username string, password string
 }
 
 func (s *Server) handler(peer smtpd.Peer, envelope smtpd.Envelope) error {
-	if s.Relay == nil {
+	var remoteIP net.IP
+
+	if s.Relay.OutgoingServer.Host == "" {
 		return nil
 	}
 
-	remoteIP := peer.Addr.(*net.TCPAddr).IP
+	if addr, ok := peer.Addr.(*net.TCPAddr); ok {
+		remoteIP = addr.IP
+	}
 
 	log.Infow("processing email", log.Fields{
 		"server": s.URI.String(), "from": envelope.Sender, "to": envelope.Recipients, "remote_ip": remoteIP,

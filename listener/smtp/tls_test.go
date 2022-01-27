@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ajgon/mailbowl/config"
 	"github.com/ajgon/mailbowl/listener/smtp"
 	"github.com/stretchr/testify/assert"
 )
@@ -34,7 +35,7 @@ func TestValidTLSArgs(t *testing.T) {
 		gotErr, err error
 	)
 
-	gotTLS, gotErr = smtp.NewTLS("", "", "", "", true)
+	gotTLS, gotErr = smtp.NewTLS(config.SMTPTLS{ForceForStartTLS: true})
 
 	if gotTLS != nil {
 		t.Errorf("got %+v, want %+v", gotTLS, nil)
@@ -44,7 +45,9 @@ func TestValidTLSArgs(t *testing.T) {
 		t.Errorf("got wrong error type, want ErrTLSNotConfigured")
 	}
 
-	gotTLS, gotErr = smtp.NewTLS(tlsKeyExample, tlsCertificateExample, "", "", true)
+	gotTLS, gotErr = smtp.NewTLS(
+		config.SMTPTLS{Key: tlsKeyExample, Certificate: tlsCertificateExample, ForceForStartTLS: true},
+	)
 	assert.NoError(t, gotErr)
 
 	if !gotTLS.ForceForStartTLS {
@@ -67,7 +70,9 @@ func TestValidTLSArgs(t *testing.T) {
 	_, err = certificateFile.Write([]byte(tlsCertificateExample))
 	assert.NoError(t, err)
 
-	gotTLS, gotErr = smtp.NewTLS("", "", keyFile.Name(), certificateFile.Name(), false)
+	gotTLS, gotErr = smtp.NewTLS(
+		config.SMTPTLS{KeyFile: keyFile.Name(), CertificateFile: certificateFile.Name(), ForceForStartTLS: false},
+	)
 	assert.NoError(t, gotErr)
 
 	if gotTLS.ForceForStartTLS {

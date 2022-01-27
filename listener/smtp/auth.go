@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"github.com/ajgon/mailbowl/config"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -14,9 +15,15 @@ type AuthUser struct {
 	PasswordHash string
 }
 
-func NewAuth(enabled bool, users []*AuthUser) *Auth {
+func NewAuth(conf config.SMTPAuth) *Auth {
+	users := make([]*AuthUser, 0)
+
+	for _, user := range conf.Users {
+		users = append(users, &AuthUser{Email: user.Email, PasswordHash: user.PasswordHash})
+	}
+
 	return &Auth{
-		Enabled: enabled,
+		Enabled: conf.Enabled,
 		Users:   users,
 	}
 }

@@ -1,43 +1,88 @@
 ---
-env: development
-
 log:
-  format: ""
+  # when true, log levels will be colorized - not recommended for production
+  color: false
+  # one of: console, json or logfmt
+  format: console
+  # one of: none, debug, info, warn or error
   level: warn
-  stacktrace_level: ""
+  # determines minimal log level, when alongside of the line, stacktrace will be displayed
+  # not recommended for production (set it to none)
+  stacktrace_level: none
 
 relay:
+  # configures a server which will receive all forwarded emails
   outgoing_server:
+    # in format "host:port"
     address: ""
+    # supported methods are none, plain and crammd5
     auth_method: plain
+    # email which will be used in `From:` header.
+    # If set it will override the email used in message
     from_email: ""
+    # user password for PLAIN auth, or secret for CRAMMD5
     password: ""
+    # user login, can be E-Mail
     username: ""
+    # when connecting to encrypted endpoint (either TLS or STARTTLS), verify TLS certificate
     verify_tls: true
 
+# configuration of internal email server - the one which will receive
+# emails, to forward them to relay.outgoing_server
 smtp:
   auth:
+    # enable authentication requirement
     enabled: true
-    users: []
+    users:
+      # a list emails and password hashes, of users who can perform authentication
+      # to internal email server
+      # to generate password hash use ./mailbowl password
+      - email:
+        password_hash:
+      - email:
+        password_hash:
+      - email:
+        password_hash:
+  # hostname used to introduce server
   hostname: "localhost.localdomain"
   limit:
+    # maximum concurrent connections, use -1 to disable
     connections: 100
+    # maximum message size in bytes
     message_size: 26214400
+    # maximum RCPT TO calls for each envelope
     recipients: 100
+  # list of addresses, ports and schemes to bind to
+  # format is: scheme://ip:port
+  # allowed schemes are plain, tls and starttls
   listen:
-    - plain://0.0.0.0:10025
+    # - plain://0.0.0.0:10025
     - tls://0.0.0.0:10465
     - starttls://0.0.0.0:10587
   timeout:
+    # socket timeout for read operations
     read: 60s
+    # socket timeout for write operations
     write: 60s
+    # socket timeout for DATA command
     data: 5m
+  # key/certificate pair for TLS and STARTTLS endpoints
+  # when both key/certificate and key_file/certificate_file are passed,
+  # key and certificate takes precedence
   tls:
+    # use key directly
     key: ""
+    # use certificate directly
     certificate: ""
-    key_file: ""
-    certificate_file: ""
+    # key file path
+    key_file: "/etc/ssl/mailbowl.key"
+    # certificate file path
+    certificate_file: "/etc/ssl/mailbowl.crt"
+    # when set to true, StartTLS usage will be forced
     force_for_starttls: true
-  users: [] # [email, password_hash]
+  # list of IPs allowed to connect to smtp server
+  # do not set it to wide ranges like 0.0.0.0/0 or ::/0 if not necessary
+  # supports both IPv4 and IPv6
   whitelist:
-    cidrs: []
+    - 127.0.0.1/8
+    - ::1/128

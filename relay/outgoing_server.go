@@ -3,8 +3,9 @@ package relay
 import (
 	"crypto/tls"
 	"fmt"
-	"net"
 	"net/smtp"
+
+	"github.com/ajgon/mailbowl/config"
 )
 
 const (
@@ -14,33 +15,26 @@ const (
 )
 
 type OutgoingServer struct {
-	AuthMethod     string
-	ConnectionType string
+	AuthMethod     config.RelayAuthMethod
+	ConnectionType config.RelayConnectionType
 	FromEmail      string
 	Host           string
 	Password       string
-	Port           string
+	Port           int
 	Username       string
 	VerifyTLS      bool
 }
 
-func NewOutgoingServer(
-	address, authMetod, connectionType, fromEmail, password, username string, verifyTLS bool,
-) (*OutgoingServer, error) {
-	host, port, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, fmt.Errorf("error configuring outgoing server: %w", err)
-	}
-
+func NewOutgoingServer(conf config.RelayOutgoingServer) (*OutgoingServer, error) {
 	return &OutgoingServer{
-		AuthMethod:     authMetod,
-		ConnectionType: connectionType,
-		FromEmail:      fromEmail,
-		Host:           host,
-		Password:       password,
-		Port:           port,
-		Username:       username,
-		VerifyTLS:      verifyTLS,
+		AuthMethod:     conf.AuthMethod,
+		ConnectionType: conf.ConnectionType,
+		FromEmail:      conf.FromEmail,
+		Host:           conf.Host,
+		Password:       conf.Password,
+		Port:           conf.Port,
+		Username:       conf.Username,
+		VerifyTLS:      conf.VerifyTLS,
 	}, nil
 }
 
@@ -49,18 +43,7 @@ func (ros *OutgoingServer) Send(from string, recipients []string, message []byte
 		from = ros.FromEmail
 	}
 
-	if ros.ConnectionType == "" {
-		switch ros.Port {
-		case "465", "smtps":
-			ros.ConnectionType = ConnectionTLS
-		case "587", "starttls":
-			ros.ConnectionType = ConnectionStartTLS
-		default:
-			ros.ConnectionType = ConnectionPlain
-		}
-	}
-
-	if ros.ConnectionType == ConnectionPlain {
+	if ros.ConnectionType == config.ConnectionPlain {
 		return ros.sendPlain(from, recipients, message)
 	}
 
@@ -126,12 +109,12 @@ func (ros *OutgoingServer) buildTLSClient() (client *smtp.Client, err error) {
 	var conn *tls.Conn
 
 	tlsconfig := &tls.Config{
-		InsecureSkipVerify: !ros.VerifyTLS, //nolint: gosec
+		InsecureSkipVerify: !ros.VerifyTLS, //nolint:gosec
 		ServerName:         ros.Host,
 	}
 
-	if ros.ConnectionType == ConnectionStartTLS {
-		client, err = smtp.Dial(fmt.Sprintf("%s:%s", ros.Host, ros.Port))
+	if ros.ConnectionType == config.ConnectionStartTLS {
+		client, err = smtp.Dial(fmt.Sprintf("%s:%d", ros.Host, ros.Port))
 		if err != nil {
 			return nil, fmt.Errorf("outgoing starttls error: %w", err)
 		}
@@ -144,7 +127,7 @@ func (ros *OutgoingServer) buildTLSClient() (client *smtp.Client, err error) {
 		return client, nil
 	}
 
-	conn, err = tls.Dial("tcp", fmt.Sprintf("%s:%s", ros.Host, ros.Port), tlsconfig)
+	conn, err = tls.Dial("tcp", fmt.Sprintf("%s:%d", ros.Host, ros.Port), tlsconfig)
 	if err != nil {
 		return nil, fmt.Errorf("outgoing tls error: %w", err)
 	}
@@ -160,7 +143,7 @@ func (ros *OutgoingServer) buildTLSClient() (client *smtp.Client, err error) {
 func (ros *OutgoingServer) sendPlain(from string, recipients []string, message []byte) error {
 	auth := ros.buildAuth()
 
-	err := smtp.SendMail(fmt.Sprintf("%s:%s", ros.Host, ros.Port), auth, from, recipients, message)
+	err := smtp.SendMail(fmt.Sprintf("%s:%d", ros.Host, ros.Port), auth, from, recipients, message)
 	if err != nil {
 		return fmt.Errorf("error sending email via outgoing server: %w", err)
 	}
@@ -169,8 +152,12 @@ func (ros *OutgoingServer) sendPlain(from string, recipients []string, message [
 }
 
 func (ros *OutgoingServer) buildAuth() smtp.Auth {
-	if ros.AuthMethod == "plain" {
+	if ros.AuthMethod == config.AuthPlain {
 		return smtp.PlainAuth("", ros.Username, ros.Password, ros.Host)
+	}
+
+	if ros.AuthMethod == config.AuthCramMD5 {
+		return smtp.CRAMMD5Auth(ros.Username, ros.Password)
 	}
 
 	return nil

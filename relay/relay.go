@@ -2,16 +2,23 @@ package relay
 
 import (
 	"fmt"
+
+	"github.com/ajgon/mailbowl/config"
 )
 
 type Relay struct {
 	OutgoingServer *OutgoingServer
 }
 
-func NewRelay(outgoingServer *OutgoingServer) *Relay {
+func NewRelay(conf config.Relay) (*Relay, error) {
+	outgoingServer, err := NewOutgoingServer(conf.OutgoingServer)
+	if err != nil {
+		return nil, fmt.Errorf("error configuring outgoing server: %w", err)
+	}
+
 	return &Relay{
 		OutgoingServer: outgoingServer,
-	}
+	}, nil
 }
 
 func (r *Relay) Handle(from string, recipients []string, message []byte) error {

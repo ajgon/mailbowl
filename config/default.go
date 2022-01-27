@@ -1,97 +1,88 @@
 package config
 
-import (
-	"reflect"
+import "github.com/spf13/viper"
 
-	"github.com/spf13/viper"
+const (
+	defaultConnectionsLimit   = 100
+	defaultMessageSizeInBytes = 26214400
+	defaultRecipientsLimit    = 100
 )
 
-type Defaults struct {
-	Env string `viper:"env"`
-
-	LogFormat          string `viper:"log.format"`
-	LogLevel           string `viper:"log.level"`
-	LogStacktraceLevel string `viper:"log.stacktrace_level"`
-
-	RelayOutgoingServerAddress    string `viper:"relay.outgoing_server.address"`
-	RelayOutgoingServerAuthMethod string `viper:"relay.outgoing_server.auth_method"`
-	RelayOutgoingServerFromEmail  string `viper:"relay.outgoing_server.from_email"`
-	RelayOutgoingServerPassword   string `viper:"relay.outgoing_server.password"`
-	RelayOutgoingServerUsername   string `viper:"relay.outgoing_server.username"`
-	RelayOutgoingServerVerifyTLS  bool   `viper:"relay.outgoing_server.verify_tls"`
-
-	SMTPAuthEnabled         bool                `viper:"smtp.auth.enabled"`
-	SMTPAuthUsers           []map[string]string `viper:"smtp.auth.users"`
-	SMTPHostname            string              `viper:"smtp.hostname"`
-	SMTPLimitConnections    int                 `viper:"smtp.limit.connections"`
-	SMTPLimitMessageSize    int                 `viper:"smtp.limit.message_size"`
-	SMTPLimitRecipients     int                 `viper:"smtp.limit.recipients"`
-	SMTPListen              []string            `viper:"smtp.listen"`
-	SMTPTimeoutRead         string              `viper:"smtp.timeout.read"`
-	SMTPTimeoutWrite        string              `viper:"smtp.timeout.write"`
-	SMTPTimeoutData         string              `viper:"smtp.timeout.data"`
-	SMTPTLSKey              string              `viper:"smtp.tls.key"`
-	SMTPTLSCertificate      string              `viper:"smtp.tls.certificate"`
-	SMTPTLSKeyFile          string              `viper:"smtp.tls.key_file"`
-	SMTPTLSCertificateFile  string              `viper:"smtp.tls.certificate_file"`
-	SMTPTLSForceForStartTLS bool                `viper:"smtp.tls.force_for_starttls"`
-	SMTPWhitelistCIDRs      []string            `viper:"smtp.whitelist.cidrs"`
+//nolint:gochecknoglobals
+var defaults = map[string]interface{}{
+	"log.color":                             false,
+	"log.format":                            "console",
+	"log.level":                             "warn",
+	"log.stacktrace_level":                  "error",
+	"relay.outgoing_server.address":         "",
+	"relay.outgoing_server.auth_method":     "plain",
+	"relay.outgoing_server.connection_type": "tls",
+	"relay.outgoing_server.from_email":      "",
+	"relay.outgoing_server.host":            "",
+	"relay.outgoing_server.password":        "",
+	"relay.outgoing_server.port":            0,
+	"relay.outgoing_server.username":        "",
+	"relay.outgoing_server.verify_tls":      true,
+	"smtp.auth.enabled":                     false,
+	"smtp.auth.users":                       []interface{}{},
+	"smtp.hostname":                         "",
+	"smtp.limit.connections":                defaultConnectionsLimit,
+	"smtp.limit.message_size":               defaultMessageSizeInBytes,
+	"smtp.limit.recipients":                 defaultRecipientsLimit,
+	"smtp.listen":                           []string{},
+	"smtp.timeout.read":                     "60s",
+	"smtp.timeout.write":                    "60s",
+	"smtp.timeout.data":                     "5m",
+	"smtp.tls.key":                          "",
+	"smtp.tls.certificate":                  "",
+	"smtp.tls.key_file":                     "",
+	"smtp.tls.certificate_file":             "",
+	"smtp.tls.force_for_starttls":           true,
+	"smtp.whitelist":                        []string{},
 }
 
-func GetDefaults() *Defaults {
-	return &Defaults{
-		Env: "development",
-
-		LogFormat:          "",
-		LogLevel:           "warn",
-		LogStacktraceLevel: "",
-
-		RelayOutgoingServerAddress:    "",
-		RelayOutgoingServerAuthMethod: "plain",
-		RelayOutgoingServerFromEmail:  "",
-		RelayOutgoingServerPassword:   "",
-		RelayOutgoingServerUsername:   "",
-		RelayOutgoingServerVerifyTLS:  true,
-
-		SMTPAuthEnabled:         true,
-		SMTPAuthUsers:           []map[string]string{},
-		SMTPHostname:            "localhost.localdomain",
-		SMTPLimitConnections:    100,      //nolint:gomnd
-		SMTPLimitMessageSize:    26214400, //nolint:gomnd
-		SMTPLimitRecipients:     100,      //nolint:gomnd
-		SMTPListen:              []string{"tls://0.0.0.0:10465", "starttls://0.0.0.0:10587"},
-		SMTPTimeoutRead:         "60s",
-		SMTPTimeoutWrite:        "60s",
-		SMTPTimeoutData:         "5m",
-		SMTPTLSKey:              "",
-		SMTPTLSCertificate:      "",
-		SMTPTLSForceForStartTLS: true,
-		SMTPTLSKeyFile:          "",
-		SMTPTLSCertificateFile:  "",
-		SMTPWhitelistCIDRs:      []string{"0.0.0.0/0", "::/0"},
-	}
-}
-
-func SetDefaults(force ...bool) {
-	forceDefaults := false
-
-	if len(force) == 1 {
-		forceDefaults = force[0]
-	}
-
-	defaults := GetDefaults()
-
-	defaultsTypes := reflect.TypeOf(*defaults)
-	defaultsValues := reflect.ValueOf(*defaults)
-
-	for i := 0; i < defaultsTypes.NumField(); i++ {
-		structType := defaultsTypes.Field(i)
-		structValue := defaultsValues.Field(i)
-
-		viper.SetDefault(structType.Tag.Get("viper"), structValue.Interface())
-
-		if forceDefaults {
-			viper.Set(structType.Tag.Get("viper"), structValue.Interface())
+func SetDefaults(force bool) {
+	for key, value := range defaults {
+		if force {
+			viper.Set(key, value)
+		} else {
+			viper.SetDefault(key, value)
 		}
 	}
+}
+
+func SetDefaultsForViper(force bool, v *viper.Viper) {
+	for key, value := range defaults {
+		if force {
+			v.Set(key, value)
+		} else {
+			v.SetDefault(key, value)
+		}
+	}
+}
+
+func GetDefaultInt(name string) int {
+	var (
+		value int
+		ok    bool
+	)
+
+	if value, ok = defaults[name].(int); !ok {
+		return 0
+	}
+
+	return value
+}
+
+func GetDefaultString(name string) string {
+	var (
+		value string
+		ok    bool
+	)
+
+	if value, ok = defaults[name].(string); !ok {
+		return ""
+	}
+
+	return value
 }

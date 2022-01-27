@@ -20,8 +20,6 @@ const (
 type Manager struct {
 	listeners []listener.Listener
 
-	ctx           context.Context
-	cancelCtx     func()
 	interruptChan chan os.Signal
 	reloadChan    chan os.Signal
 	restarting    bool
@@ -48,29 +46,31 @@ func (m *Manager) Start() {
 	}
 }
 
-func (m *Manager) Restart() {
+func (m *Manager) Restart(cancelCtx func()) {
 	m.restarting = true
-	m.cancelCtx()
+
+	cancelCtx()
 }
 
 func (m *Manager) startAllListeners() {
-	var wg sync.WaitGroup
+	var waitGroup sync.WaitGroup
 
-	m.ctx, m.cancelCtx = context.WithCancel(context.Background())
+	ctx, cancelCtx := context.WithCancel(context.Background())
+
 	m.attachSignals()
 
-	defer m.cleanup()
+	defer m.cleanup(cancelCtx)
 
-	go m.handleReload()
-	go m.handleInterrupt()
+	go m.handleReload(ctx, cancelCtx)
+	go m.handleInterrupt(ctx, cancelCtx)
 
 	for _, listener := range m.listeners {
-		wg.Add(1)
+		waitGroup.Add(1)
 
-		go m.startListener(&wg, listener)
+		go m.startListener(ctx, cancelCtx, &waitGroup, listener)
 	}
 
-	wg.Wait()
+	waitGroup.Wait()
 }
 
 func (m *Manager) attachSignals() {
@@ -78,31 +78,31 @@ func (m *Manager) attachSignals() {
 	signal.Notify(m.interruptChan, syscall.SIGINT, syscall.SIGQUIT)
 }
 
-func (m *Manager) cleanup() {
+func (m *Manager) cleanup(cancelCtx func()) {
 	signal.Stop(m.reloadChan)
 	signal.Stop(m.interruptChan)
-	m.cancelCtx()
+	cancelCtx()
 }
 
-func (m *Manager) handleReload() {
+func (m *Manager) handleReload(ctx context.Context, cancelCtx func()) {
 	for {
 		select {
 		case <-m.reloadChan:
 			log.Info("reloading config")
 			config.Reload()
-			m.Restart()
-		case <-m.ctx.Done():
+			m.Restart(cancelCtx)
+		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (m *Manager) handleInterrupt() {
+func (m *Manager) handleInterrupt(ctx context.Context, cancelCtx func()) {
 	select {
 	case <-m.interruptChan:
 		log.Info("gracefully shutting down")
-		m.cancelCtx()
-	case <-m.ctx.Done():
+		cancelCtx()
+	case <-ctx.Done():
 		return
 	}
 	<-m.interruptChan
@@ -110,11 +110,11 @@ func (m *Manager) handleInterrupt() {
 	os.Exit(ExitCodeTerminated)
 }
 
-func (m *Manager) startListener(wg *sync.WaitGroup, listener listener.Listener) {
+func (m *Manager) startListener(ctx context.Context, cancelCtx func(), wg *sync.WaitGroup, listener listener.Listener) {
 	defer wg.Done()
 
-	if err := listener.Serve(m.ctx); err != nil {
+	if err := listener.Serve(ctx); err != nil {
 		log.Errorf("unprocessable %s error: %s", listener.GetName(), err.Error())
-		m.cancelCtx()
+		cancelCtx()
 	}
 }

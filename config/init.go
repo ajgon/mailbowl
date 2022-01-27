@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 
@@ -14,35 +13,38 @@ import (
 
 //nolint:gochecknoglobals
 var redactedFields = []string{
-	"key",
-	"password",
-	"password_hash",
+	"Key",
+	"Password",
+	"PasswordHash",
 }
 
-// Init reads in config file and ENV variables if set.
-func Init() {
-	SetDefaults()
-
+func Init(cfgFile string) {
+	SetDefaults(false)
 	viper.SetEnvPrefix("MAILBOWL")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv() // read in environment variables that match
+	viper.AutomaticEnv()
+	viper.SetConfigType("yaml")
 
-	err := ConfigureLogger(os.Stdout, os.Stderr)
-	cobra.CheckErr(err)
-
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		Reload()
-		log.Info("Using config file:", viper.ConfigFileUsed())
-	} else {
-		log.Errorf("problem using config file `%s`: %s", viper.ConfigFileUsed(), err.Error())
+	err := viper.ReadInConfig()
+	if cfgFile != "" && err != nil {
+		log.Fatalf("problem using config file `%s`: %s", viper.ConfigFileUsed(), err.Error())
 	}
 
-	normalizeSliceOfMaps("smtp.auth.users")
+	config = Config{}
 
-	viperSettingsJSON, err := json.MarshalIndent(viper.AllSettings(), "", "  ")
+	if err := viper.Unmarshal(&config, viper.DecodeHook(Hook)); err != nil {
+		log.Fatalf("error initializing config: %s", err.Error())
+	}
+
+	Reload()
+
+	if err == nil {
+		log.Infof("Using config file: %s", viper.ConfigFileUsed())
+	}
+
+	configJSON, err := json.MarshalIndent(Get(), "", "  ")
 	cobra.CheckErr(err)
-	log.Debug("Loaded config: ", redactConfig(string(viperSettingsJSON)))
+	log.Debug("Loaded config: ", redactConfig(string(configJSON)))
 }
 
 func LoadConfigFile(cfgFile string) {
@@ -59,33 +61,9 @@ func LoadConfigFile(cfgFile string) {
 	viper.SetConfigName("mailbowl")
 }
 
-func CobraInitialize(cfgFile string) func() {
-	return func() {
-		LoadConfigFile(cfgFile)
-		Init()
-	}
-}
-
-func normalizeSliceOfMaps(viperPath string) {
-	normalizedSlice := make([]map[string]string, 0)
-
-	if slice, ok := viper.Get(viperPath).([]interface{}); ok {
-		normalizedMap := make(map[string]string)
-
-		for _, hash := range slice {
-			for key, value := range hash.(map[interface{}]interface{}) {
-				if normalizedKey, ok := key.(string); ok {
-					if normalizedValue, ok := value.(string); ok {
-						normalizedMap[normalizedKey] = normalizedValue
-					}
-				}
-			}
-		}
-
-		normalizedSlice = append(normalizedSlice, normalizedMap)
-	}
-
-	viper.Set(viperPath, normalizedSlice)
+func CobraInitialize(cfgFile string) {
+	LoadConfigFile(cfgFile)
+	Init(cfgFile)
 }
 
 func redactConfig(configJSON string) string {

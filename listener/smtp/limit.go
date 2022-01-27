@@ -11,31 +11,39 @@ type Limit struct {
 	Recipients  int
 }
 
-func NewLimit(connections, messageSize, recipients int) *Limit {
-	defaults := config.GetDefaults()
+func NewLimit(conf config.SMTPLimit) *Limit {
+	var (
+		oldValue    int
+		connections = conf.Connections
+		messageSize = conf.MessageSize
+		recipients  = conf.Recipients
+	)
 
 	if connections == 0 { // less than zero disables limiter completely
-		log.Debugf(
-			"invalid smtp.limit.connections value `%d`, setting default `%d`", connections, defaults.SMTPLimitConnections,
-		)
+		oldValue = connections
+		connections = config.GetDefaultInt("smtp.limit.connections")
 
-		connections = defaults.SMTPLimitConnections
+		log.Debugf(
+			"invalid smtp.limit.connections value `%d`, setting default `%d`", oldValue, connections,
+		)
 	}
 
 	if messageSize <= 0 {
-		log.Debugf(
-			"invalid smtp.limit.message_size value `%d`, setting default `%d`", messageSize, defaults.SMTPLimitMessageSize,
-		)
+		oldValue = messageSize
+		messageSize = config.GetDefaultInt("smtp.limit.message_size")
 
-		messageSize = defaults.SMTPLimitMessageSize
+		log.Debugf(
+			"invalid smtp.limit.message_size value `%d`, setting default `%d`", oldValue, messageSize,
+		)
 	}
 
 	if recipients <= 0 {
-		log.Debugf(
-			"invalid smtp.limit.recipients value `%d`, setting default `%d`", recipients, defaults.SMTPLimitRecipients,
-		)
+		oldValue = recipients
+		recipients = config.GetDefaultInt("smtp.limit.recipients")
 
-		recipients = defaults.SMTPLimitRecipients
+		log.Debugf(
+			"invalid smtp.limit.recipients value `%d`, setting default `%d`", oldValue, messageSize,
+		)
 	}
 
 	return &Limit{

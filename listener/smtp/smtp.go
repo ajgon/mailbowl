@@ -5,17 +5,14 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/log-go"
-	"github.com/ajgon/mailbowl/relay"
+	"github.com/ajgon/mailbowl/config"
 )
 
 type SMTP struct {
 	Servers []*Server
 }
 
-func NewSMTP(
-	auth *Auth, hostname string, limit *Limit, timeout *Timeout, tls *TLS, whitelist *Whitelist, uris []string,
-	relay *relay.Relay,
-) *SMTP {
+func NewSMTP(smtpConf config.SMTP, relayConf config.Relay, uris []string) *SMTP {
 	smtp := &SMTP{Servers: make([]*Server, 0)}
 	brokenURIs := false
 
@@ -26,13 +23,16 @@ func NewSMTP(
 
 			log.Errorw("invalid SMTP listener URI: %s", log.Fields{"uri": uri})
 		} else {
-			server := NewServer(auth, hostname, limit, timeout, tls, whitelist, smtpURI, relay)
+			server, err := NewServer(smtpConf, relayConf, smtpURI)
+			if err != nil {
+				log.Fatalw("problem booting SMTP listener: %s", log.Fields{"uri": uri})
+			}
 			smtp.Servers = append(smtp.Servers, server)
 		}
 	}
 
 	if brokenURIs {
-		log.Fatalf("one of SMTP listener uris is invalid, refusing to start")
+		log.Fatal("one of SMTP listener uris is invalid, refusing to start")
 	}
 
 	return smtp

@@ -7,7 +7,7 @@ import (
 )
 
 func Reload() {
-	err := ConfigureLogger(os.Stdout, os.Stderr)
+	err := ConfigureLogger(Get().Log, os.Stdout, os.Stderr)
 	handleReloadError(err)
 }
 
